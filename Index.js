@@ -3,11 +3,19 @@ const cors = require('cors')
 const jwt = require('jsonwebtoken')
 require('dotenv').config()
 const app = express()
+
+// This is your test secret API key.
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
+
+
 const port = process.env.PORT || 5007
 
 // middleware
-app.use(cors())
-app.use(express.json())
+app.use(cors());
+app.use(express.json());
+
+app.use(express.static("public"));
+
 
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.sxdrhxr.mongodb.net/?retryWrites=true&w=majority`;
@@ -91,7 +99,8 @@ async function run() {
             admin = user?.role === 'admin';
          }
          res.send({ admin })
-      })
+      });
+
       app.post('/users', async (req, res) => {
          const user = req.body;
          // insert email if user doesn't exists.
@@ -105,6 +114,7 @@ async function run() {
          const result = await userCollection.insertOne(user);
          res.send(result)
       });
+
       // make admin
       app.patch('/users/admin/:id', verifyToken, verifyAdmin, async (req, res) => {
          const id = req.params.id;
@@ -116,14 +126,14 @@ async function run() {
          }
          const result = await userCollection.updateOne(filter, updatedDoc);
          res.send(result);
-      })
+      });
 
       app.delete('/users/:id', verifyToken, verifyAdmin, async (req, res) => {
          const id = req.params.id;
          const query = { _id: new ObjectId(id) }
          const result = await userCollection.deleteOne(query);
          res.send(result);
-      })
+      });
       //  menu related
       // get all menu
       app.get('/menu', async (req, res) => {
@@ -132,14 +142,15 @@ async function run() {
          res.send(result);
       });
       // unique data load
-      app.get('/menu/:id', async (req, res) => {
+      app.get('/menu/:id',verifyToken, verifyAdmin, async (req, res) => {
          const id = req.params.id;
          const query = { _id: new ObjectId(id) }
          const result = await menuCollection.findOne(query);
          res.send(result);
       });
+
       // update 
-      app.patch('/menu/:id', async (req, res) => {
+      app.patch('/menu/:id', verifyToken, verifyAdmin, async (req, res) => {
          const item = req.body;
          const id = req.params.id;
          const filter = { _id: new ObjectId(id) }
@@ -155,20 +166,22 @@ async function run() {
 
          const result = await menuCollection.updateOne(filter, updatedDoc)
          res.send(result);
-      })
+      });
+
       // post admin can do
       app.post('/menu', verifyToken, verifyAdmin, async (req, res) => {
          const item = req.body;
          const result = await menuCollection.insertOne(item);
          res.send(result);
       });
+
       // delete admin
       app.delete('/menu/:id', async (req, res) => {
          const id = req.params.id;
          const query = { _id: new ObjectId(id) }
          const result = await menuCollection.deleteOne(query);
          res.send(result)
-      })
+      });
 
       // get all review
       app.get('/review', async (req, res) => {
@@ -176,6 +189,7 @@ async function run() {
          const result = await cursor.toArray();
          res.send(result);
       });
+
       // carts items
       app.get('/carts', async (req, res) => {
          const email = req.query.email;
@@ -184,20 +198,40 @@ async function run() {
          const result = await cursor.toArray();
          res.send(result)
       });
+
       // delete
       app.delete('/carts/:id', async (req, res) => {
          const id = req.params.id;
          const query = { _id: new ObjectId(id) }
          const result = await cartCollection.deleteOne(query);
          res.send(result)
-      })
+      });
+
       // post add to cart
       app.post('/carts', async (req, res) => {
          const cartItem = req.body;
          const result = await cartCollection.insertOne(cartItem);
          res.send(result)
-      })
+      });
 
+
+      // payment intent
+      app.post('/create-payment-intent', async (req, res) => {
+         const { price } = req.body;
+         const amount = parseInt(price * 100);
+         console.log(amount, 'amount inside the intent')
+   
+         const paymentIntent = await stripe.paymentIntents.create({
+           amount: amount,
+           currency: 'usd',
+           payment_method_types: ['card']
+         });
+   
+         res.send({
+           clientSecret: paymentIntent.client_secret
+         })
+       });
+       
 
       // Send a ping to confirm a successful connection
       await client.db("admin").command({ ping: 1 });
