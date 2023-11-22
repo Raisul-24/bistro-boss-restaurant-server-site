@@ -38,6 +38,7 @@ async function run() {
       const menuCollection = client.db('Bistro-Boss-Restaurant').collection('menu');
       const reviewCollection = client.db('Bistro-Boss-Restaurant').collection('review');
       const cartCollection = client.db('Bistro-Boss-Restaurant').collection('cart');
+      const paymentCollection = client.db('Bistro-Boss-Restaurant').collection('payments');
 
 
       // jwt related api
@@ -142,7 +143,7 @@ async function run() {
          res.send(result);
       });
       // unique data load
-      app.get('/menu/:id',verifyToken, verifyAdmin, async (req, res) => {
+      app.get('/menu/:id', verifyToken, verifyAdmin, async (req, res) => {
          const id = req.params.id;
          const query = { _id: new ObjectId(id) }
          const result = await menuCollection.findOne(query);
@@ -214,24 +215,50 @@ async function run() {
          res.send(result)
       });
 
-
+      // payment related api
       // payment intent
       app.post('/create-payment-intent', async (req, res) => {
          const { price } = req.body;
          const amount = parseInt(price * 100);
          console.log(amount, 'amount inside the intent')
-   
+
          const paymentIntent = await stripe.paymentIntents.create({
-           amount: amount,
-           currency: 'usd',
-           payment_method_types: ['card']
+            amount: amount,
+            currency: 'usd',
+            payment_method_types: ['card']
          });
-   
+
          res.send({
-           clientSecret: paymentIntent.client_secret
+            clientSecret: paymentIntent.client_secret
          })
-       });
-       
+      });
+      // specific email holder history
+      app.get('/payments/:email', verifyToken, async (req, res) => {
+         const query = { email: req.params.email }
+         if (req.params.email !== req.decoded.email) {
+            return res.status(403).send({ message: 'forbidden access' });
+         }
+         const result = await paymentCollection.find(query).toArray();
+         res.send(result);
+      })
+      // payment info store delete
+      app.post('/payments', async (req, res) => {
+         const payment = req.body;
+         const paymentResult = await paymentCollection.insertOne(payment);
+
+         //  carefully delete each item from the cart
+         console.log('payment info', payment);
+         const query = {
+            _id: {
+               $in: payment.cartIds.map(id => new ObjectId(id))
+            }
+         };
+
+         const deleteResult = await cartCollection.deleteMany(query);
+
+         res.send({ paymentResult, deleteResult });
+      });
+
 
       // Send a ping to confirm a successful connection
       await client.db("admin").command({ ping: 1 });
